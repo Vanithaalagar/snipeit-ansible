@@ -1,0 +1,129 @@
+---
+- hosts: localhost
+  become: true
+  vars_files:
+      - /root/snipeit-ansible/vars/variable.yml
+  handlers: 
+      - include: /root/snipeit-ansible/handlers/main.yml
+  tasks:
+    - name: Update apt repo and cache on ubuntu
+      apt: update_cache=yes force_apt_get=yes cache_valid_time=3600
+
+    - name: Upgrade all package on servers
+      apt: upgrade=dist force_apt_get=yes
+
+    - name: Install Nginx and mysql
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'nginx', 'mysql-server', 'php7.4-fpm', 'php7.4-mysql', 'python3-mysqldb' ]
+
+    - name: Insatll PHP-7.4
+      apt:   
+        name:
+          - php7.4-cli
+          - php7.4-curl
+          - php7.4-json
+          - php7.4-gd
+          - php7.4-mbstring
+          - php7.4-intl
+          - php7.4-bcmath
+          - php7.4-bz2
+          - php7.4-readline
+          - php7.4-fpm
+          - php7.4-zip
+          - php7.4-mysql
+          - php7.4-ldap
+          - php7.4-xml
+          - php7.4-tokenizer
+        state: present
+         
+    - name: Insatll composer
+      shell: curl -sS https://getcomposer.org/installer | php
+
+    - name: Move the composer.phar file 
+      command: mv composer.phar /usr/local/bin/composer
+
+    - name: Execute composer
+      file:
+        path: /usr/local/bin/composer
+        mode: a+x
+        state: file
+
+    - name: create directory ansible 
+      file: 
+        path: /var/www/snipeit
+        state: directory
+
+    - name: Clone github repo
+      git: 
+       repo: https://github.com/snipe/snipe-it
+       dest: /var/www/snipeit
+       clone: yes
+       update: yes
+       force: yes
+
+    - name: Create snipeit-database
+      mysql_db: name={{ snipeit_dbname }} state=present
+      register: db_status
+
+    - name: Create snipeit-mysql-user
+      mysql_user: name={{ snipeit_dbuser }} host='localhost' password={{ snipeit_dbuser_password }} priv=*.*:ALL state=present
+      notify:
+        - start mysql
+
+    - name: Install snipeit | Copy and update .env file to snipeit-directory
+      template:
+        src: dotenv
+        dest: /var/www/snipeit/.env
+
+    - name: change mode for storage on snipeit
+      file:
+        path: /var/www/snipeit
+        owner: www-data
+        group: www-data
+        mode: "0755"
+        recurse: yes
+
+    - name: change mode for storage on snipeit
+      file:
+        path: /var/www/snipeit/public/uploads
+        owner: www-data
+        group: www-data
+        mode: "0755"
+        recurse: yes
+
+    - name: Enable new site
+      template:
+        src: snipeit.conf
+        dest: /etc/nginx/sites-available/snipeit.com
+
+    - name: Enable new site
+      file: 
+        src: /etc/nginx/sites-available/snipeit.com
+        dest: /etc/nginx/sites-available/snipeit.com
+        state: link
+        force: yes
+      notify:
+        - restart nginx
+
+    - name: Composer Installation	
+      shell: composer update --lock
+      args: 
+        creates: /var/www/snipeit/
+
+    - name: Composer Installation	
+      shell: composer install
+      args: 
+        creates: /var/www/snipeit/
+
+    - name: Run migration
+      shell: php artisan migrate --force
+      args:
+        creates: /var/www/snipeit/
+
+    - name: App_key generation
+      shell: php artisan key:generate --force
+      args: 
+        creates: /var/www/snipeit/
+
+
+

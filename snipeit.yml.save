@@ -1,0 +1,16 @@
+---
+- hosts: localhost
+  become: true
+  var_files:
+      - /root/snipeit-ansible/vars/external_vars.yml
+  handlers:
+      - /root/snipeit-ansible/handlers/main.yml
+  tasks:
+    - name: Update apt repo and cache on all Debian/Ubuntu box
+      apt: update_cache=yes force_apt_get=yes cache_valid_times=3600
+   
+    - name: Upgrade all packages on servers
+      apt: update=dist force_apt_get=yes
+    
+    - name: Universe repository is enabled
+      apt_repository: 
